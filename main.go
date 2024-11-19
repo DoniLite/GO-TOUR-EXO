@@ -68,8 +68,16 @@ func Fibonacci() func() int {
 	secondNum := 1
 	return func() int {
 		firstNum, secondNum = secondNum, firstNum+secondNum
-        return firstNum
+		return firstNum
 	}
+}
+
+// implement fmt.Stringer to print the address as a dotted quad
+type IPAddr [4]byte
+
+// This function is a Stringer that prints the address as a dotted quad
+func (ip IPAddr) String() string {
+	return fmt.Sprintf("%v.%v.%v.%v", ip[0], ip[1], ip[2], ip[3])
 }
 
 func main() {
