@@ -2,7 +2,11 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"image/color"
+	"io"
 	"math"
+	"os"
 	"strings"
 )
 
@@ -80,6 +84,73 @@ func (ip IPAddr) String() string {
 	return fmt.Sprintf("%v.%v.%v.%v", ip[0], ip[1], ip[2], ip[3])
 }
 
+// This is an error type for the Sqrt function to handle the case where the input value is negative
+type ErrNegativeSqrt float64
+
+// The method to implement the error on the ErrNegativeSqrt type
+func (e ErrNegativeSqrt) Error() string {
+	return fmt.Sprintf("cannot compute square root of negative number: %v", float64(e))
+}
+
+// An update of the Sqrt function to handle negative numbers
+func SqrtV2(v float64) (float64, error) {
+	if v < 0 {
+		return 0, ErrNegativeSqrt(v)
+	}
+	z := float64(1)
+	for i := 0; i < 10; i++ {
+		z -= (z*z - v) / (2 * z)
+	}
+	return z, nil
+}
+
+// a simple struct 
+type MyReader struct{}
+
+// Reader type that emits an infinite stream of the ASCII character 'A'
+func (r MyReader) Read(p []byte) (int, error) {
+    p[0] = 'A'
+    return 1, nil
+}
+
+// Rot13 type that implements a reader
+type rot13Reader struct {
+	r io.Reader
+}
+
+// Rot13Reader implements io.Reader and reads from an io.Reader
+// Modifying the stream by applying the rot13 substitution cipher to all alphabetical characters.
+func (r *rot13Reader) Read(p []byte) (int, error) {
+	b, err := r.r.Read(p)
+    if err!= nil {
+        return 0, err
+    }
+    for i := 0; i < b; i++ {
+        if p[i] >= 'A' && p[i] <= 'Z' {
+            p[i] = (p[i] - 'A' + 13) % 26 + 'A'
+        } else if p[i] >= 'a' && p[i] <= 'z' {
+            p[i] = (p[i] - 'a' + 13) % 26 + 'a'
+        }
+    }
+    return b, nil
+}
+
+// Image type that implements the necessary methods for an Image builtin interface
+type Image struct {}
+
+func (i Image) Bounds() image.Rectangle {
+	return image.Rect(0, 0, 199, 199)
+}
+
+func (i Image) ColorModel() color.Model {
+	return color.RGBAModel
+}
+
+func (i Image) At(x int, y int) color.Color {
+	return color.RGBA{uint8(x), uint8(y), 255, 255}
+}
+
+
 func main() {
 
 	num := 16.0
@@ -92,4 +163,8 @@ func main() {
 	for _, v := range test {
 		fmt.Println(v)
 	}
+
+	s := strings.NewReader("Lbh penpxrq gur pbqr!")
+	r := rot13Reader{s}
+	io.Copy(os.Stdout, &r)
 }
