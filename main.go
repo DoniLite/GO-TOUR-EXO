@@ -2,13 +2,15 @@ package main
 
 import (
 	"fmt"
-	"golang.org/x/tour/tree"
 	"image"
 	"image/color"
 	"io"
 	"math"
 	"os"
 	"strings"
+	"sync"
+
+	"golang.org/x/tour/tree"
 )
 
 /*
@@ -155,42 +157,152 @@ func (i Image) At(x int, y int) color.Color {
 // from the tree to the channel ch.
 func Walk(t *tree.Tree, ch chan int) {
 	if t == nil {
-        return
-    }
-    Walk(t.Left, ch)
-    ch <- t.Value
-    Walk(t.Right, ch)
+		return
+	}
+	Walk(t.Left, ch)
+	ch <- t.Value
+	Walk(t.Right, ch)
 }
 
 // Same determines whether the trees
 // t1 and t2 contain the same values.
 func Same(t1, t2 *tree.Tree) bool {
 	ch1 := make(chan int)
-    ch2 := make(chan int)
-    
-    go func() {
-        Walk(t1, ch1)
-        close(ch1)
-    }()
-    
-    go func() {
-        Walk(t2, ch2)
-        close(ch2)
-    }()
-    
-    // Compare the received values from the chanels
-    for {
-        v1, ok1 := <-ch1
-        v2, ok2 := <-ch2
-        
-        if ok1 != ok2 || v1 != v2 {
-            return false
-        }
-        if !ok1 {
-            break
-        }
-    }
-    return true
+	ch2 := make(chan int)
+
+	go func() {
+		Walk(t1, ch1)
+		close(ch1)
+	}()
+
+	go func() {
+		Walk(t2, ch2)
+		close(ch2)
+	}()
+
+	// Compare the received values from the chanels
+	for {
+		v1, ok1 := <-ch1
+		v2, ok2 := <-ch2
+
+		if ok1 != ok2 || v1 != v2 {
+			return false
+		}
+		if !ok1 {
+			break
+		}
+	}
+	return true
+}
+
+type Fetcher interface {
+	// Fetch returns the body of URL and
+	// a slice of URLs found on that page.
+	Fetch(url string) (body string, urls []string, err error)
+}
+
+// A map struct that uses Mutex to store url and avoid refetching them
+type SafeMap struct {
+	mu      sync.Mutex
+	visited map[string]bool
+}
+
+// Check method to verify if url is present in the map.
+func (m *SafeMap) CheckUrlAndMark(url string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.visited[url] {
+		return false
+	}
+	m.visited[url] = true
+	return true
+}
+
+// Function to return a new pointer to the SafeMap struct
+func NewSafeMap() *SafeMap {
+	return &SafeMap{
+		visited: make(map[string]bool),
+	}
+}
+
+// Crawl uses fetcher to recursively crawl
+// pages starting with url, to a maximum of depth.
+func Crawl(url string, depth int, fetcher Fetcher, safeMap *SafeMap, wg *sync.WaitGroup) {
+	// TODO: Fetch URLs in parallel.
+	// TODO: Don't fetch the same URL twice.
+	defer wg.Done()
+
+	if depth <= 0 {
+		return
+	}
+
+	if !safeMap.CheckUrlAndMark(url) {
+		return
+	}
+
+	// This implementation doesn't do either:
+
+	body, urls, err := fetcher.Fetch(url)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("found: %s %q\n", url, body)
+	for _, u := range urls {
+		wg.Add(1)
+		go Crawl(u, depth-1, fetcher, safeMap, wg)
+	}
+
+}
+
+// fakeFetcher is Fetcher that returns canned results.
+type fakeFetcher map[string]*fakeResult
+
+type fakeResult struct {
+	body string
+	urls []string
+}
+
+// A simulate function that fetch the fake urls
+func (f fakeFetcher) Fetch(url string) (string, []string, error) {
+	if res, ok := f[url]; ok {
+		return res.body, res.urls, nil
+	}
+	return "", nil, fmt.Errorf("not found: %s", url)
+}
+
+// fetcher is a populated fakeFetcher.
+var fetcher = fakeFetcher{
+	"https://golang.org/": &fakeResult{
+		"The Go Programming Language",
+		[]string{
+			"https://golang.org/pkg/",
+			"https://golang.org/cmd/",
+		},
+	},
+	"https://golang.org/pkg/": &fakeResult{
+		"Packages",
+		[]string{
+			"https://golang.org/",
+			"https://golang.org/cmd/",
+			"https://golang.org/pkg/fmt/",
+			"https://golang.org/pkg/os/",
+		},
+	},
+	"https://golang.org/pkg/fmt/": &fakeResult{
+		"Package fmt",
+		[]string{
+			"https://golang.org/",
+			"https://golang.org/pkg/",
+		},
+	},
+	"https://golang.org/pkg/os/": &fakeResult{
+		"Package os",
+		[]string{
+			"https://golang.org/",
+			"https://golang.org/pkg/",
+		},
+	},
 }
 
 func main() {
@@ -207,14 +319,20 @@ func main() {
 	r := rot13Reader{s}
 	io.Copy(os.Stdout, &r)
 	ch := make(chan int)
-    go Walk(tree.New(1), ch)
-    
-    // Test of Walk
-    for i := 0; i < 10; i++ {
-        fmt.Println(<-ch)
-    }
-    
-    // Test of Same
-    fmt.Println(Same(tree.New(1), tree.New(1))) // doit afficher true
-    fmt.Println(Same(tree.New(1), tree.New(2))) 
+	go Walk(tree.New(1), ch)
+
+	// Test of Walk
+	for i := 0; i < 10; i++ {
+		fmt.Println(<-ch)
+	}
+
+	// Test of Same
+	fmt.Println(Same(tree.New(1), tree.New(1)))
+	fmt.Println(Same(tree.New(1), tree.New(2)))
+
+	safeMap := NewSafeMap()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go Crawl("https://golang.org/", 4, fetcher, safeMap, &wg)
+	wg.Wait()
 }
