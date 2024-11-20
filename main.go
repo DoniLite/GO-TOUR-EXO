@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"golang.org/x/tour/tree"
 	"image"
 	"image/color"
 	"io"
@@ -104,13 +105,13 @@ func SqrtV2(v float64) (float64, error) {
 	return z, nil
 }
 
-// a simple struct 
+// a simple struct
 type MyReader struct{}
 
 // Reader type that emits an infinite stream of the ASCII character 'A'
 func (r MyReader) Read(p []byte) (int, error) {
-    p[0] = 'A'
-    return 1, nil
+	p[0] = 'A'
+	return 1, nil
 }
 
 // Rot13 type that implements a reader
@@ -122,21 +123,21 @@ type rot13Reader struct {
 // Modifying the stream by applying the rot13 substitution cipher to all alphabetical characters.
 func (r *rot13Reader) Read(p []byte) (int, error) {
 	b, err := r.r.Read(p)
-    if err!= nil {
-        return 0, err
-    }
-    for i := 0; i < b; i++ {
-        if p[i] >= 'A' && p[i] <= 'Z' {
-            p[i] = (p[i] - 'A' + 13) % 26 + 'A'
-        } else if p[i] >= 'a' && p[i] <= 'z' {
-            p[i] = (p[i] - 'a' + 13) % 26 + 'a'
-        }
-    }
-    return b, nil
+	if err != nil {
+		return 0, err
+	}
+	for i := 0; i < b; i++ {
+		if p[i] >= 'A' && p[i] <= 'Z' {
+			p[i] = (p[i]-'A'+13)%26 + 'A'
+		} else if p[i] >= 'a' && p[i] <= 'z' {
+			p[i] = (p[i]-'a'+13)%26 + 'a'
+		}
+	}
+	return b, nil
 }
 
 // Image type that implements the necessary methods for an Image builtin interface
-type Image struct {}
+type Image struct{}
 
 func (i Image) Bounds() image.Rectangle {
 	return image.Rect(0, 0, 199, 199)
@@ -150,15 +151,53 @@ func (i Image) At(x int, y int) color.Color {
 	return color.RGBA{uint8(x), uint8(y), 255, 255}
 }
 
+// Walk walks the tree t sending all values
+// from the tree to the channel ch.
+func Walk(t *tree.Tree, ch chan int) {
+	if t == nil {
+        return
+    }
+    Walk(t.Left, ch)
+    ch <- t.Value
+    Walk(t.Right, ch)
+}
+
+// Same determines whether the trees
+// t1 and t2 contain the same values.
+func Same(t1, t2 *tree.Tree) bool {
+	ch1 := make(chan int)
+    ch2 := make(chan int)
+    
+    go func() {
+        Walk(t1, ch1)
+        close(ch1)
+    }()
+    
+    go func() {
+        Walk(t2, ch2)
+        close(ch2)
+    }()
+    
+    // Compare the received values from the chanels
+    for {
+        v1, ok1 := <-ch1
+        v2, ok2 := <-ch2
+        
+        if ok1 != ok2 || v1 != v2 {
+            return false
+        }
+        if !ok1 {
+            break
+        }
+    }
+    return true
+}
 
 func main() {
 
 	num := 16.0
 	sqrt := Sqrt(num)
 	fmt.Printf("The square root of %.2f is %.2f\n", num, sqrt)
-	for i := 0; i < 1000; i++ {
-		fmt.Printf("The iteration %v times \n", i)
-	}
 	test := Pic(8, 10)
 	for _, v := range test {
 		fmt.Println(v)
@@ -167,4 +206,15 @@ func main() {
 	s := strings.NewReader("Lbh penpxrq gur pbqr!")
 	r := rot13Reader{s}
 	io.Copy(os.Stdout, &r)
+	ch := make(chan int)
+    go Walk(tree.New(1), ch)
+    
+    // Test of Walk
+    for i := 0; i < 10; i++ {
+        fmt.Println(<-ch)
+    }
+    
+    // Test of Same
+    fmt.Println(Same(tree.New(1), tree.New(1))) // doit afficher true
+    fmt.Println(Same(tree.New(1), tree.New(2))) 
 }
