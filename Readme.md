@@ -6,7 +6,7 @@ You will find the documentation necessary for the implementation of the function
 
 ## How is it organized?
 
-All the corrections are implemented by progression sequence as seen in the course. You can thus consult these corrections as you wish.
+All the corrections are implemented by progression sequence as seen in the course. You can consult these corrections as you wish.
 
 ## Why this repository?
 
